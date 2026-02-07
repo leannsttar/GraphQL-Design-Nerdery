@@ -1,0 +1,681 @@
+#Custom Scalar Type
+"""
+	ISO-8601 UTC DateTime (e.g. 2026-02-06T15:30:00Z)
+"""
+scalar DateTime
+scalar PositiveInt
+scalar NonNegativeInt
+
+enum Role {
+	CLIENT
+	MANAGER
+}
+
+enum OrderStatus {
+	PENDING
+	CANCELLED
+	PAID
+	SHIPPED
+	DELIVERED
+}
+
+enum PaymentStatus {
+	PENDING
+	SUCCESS
+	FAILED
+}
+
+#OBJECT TYPES
+"""
+	Monetary amount with currency and formatted display
+"""
+type MonetaryAmount {
+  	"""
+  	Amount in cents (e.g., 2000 = $20.00)
+	"""
+  	amount: PositiveInt! 
+  	currency: String!
+  	"""
+		Human-readable formatted string (e.g., "$20.00")
+	"""
+  	formatted: String! 
+}
+
+
+type Address{
+	id: ID!
+	addressLine: String!
+	city: String!
+	country: String!
+	postalCode: String!
+}
+
+type User{
+	id: ID!
+	email: String!
+	fullname: String
+	role: Role!
+	addresses: [Address!]
+	#cart: Cart
+	#orders: [Order!]
+}
+
+type Category{
+	id: ID!
+	name: String!
+	products: [Product!]
+}
+
+"""
+	Base contract to define the mimimum structure of Product
+"""
+interface ProductBase{
+	id: ID!
+	title: String!
+	description: String!
+	category: Category!
+	featuredImage: Image
+	images: [Image!]!
+	options: [ProductOption!]!
+	variants: [Variant!]!
+}
+
+"""
+	Public product view - only shows active, non-deleted products
+"""
+type Product implements ProductBase{
+	id: ID!
+	title: String!
+	description: String!
+	category: Category!
+	"""
+	Main product image
+	"""
+	featuredImage: Image
+	images: [Image!]!
+	"""
+	Available options (e.g., Color, Size)
+	"""
+	options: [ProductOption!]!
+	"""
+	All product variants
+	"""
+	variants: [Variant!]!
+}
+
+"""
+	Admin product view with metadata (isActive, timestamps, soft deletes)
+"""
+type ProductAdmin implements ProductBase{
+	id: ID!
+	title: String!
+	description: String!
+	category: Category!
+	featuredImage: Image
+	images: [Image!]!
+	options: [ProductOption!]!
+	variants: [Variant!]!
+	"""
+	Whether product is active and visible to customers
+	"""
+	isActive: Boolean!
+	"""
+	Soft delete timestamp (null if not deleted)
+	"""
+	deletedAt: DateTime
+	createdAt: DateTime!
+	updatedAt: DateTime!
+}
+
+"""
+	Product option (e.g., Color with values ["Red", "Blue"])
+"""
+type ProductOption {
+  id: ID!
+  """
+	Option name (e.g., "Color", "Size")
+  """
+  name: String!  
+  """
+  	Available values (e.g., S, XL, L)
+  """
+  values: [String!]!
+}
+
+type Variant {
+	id: ID!
+	title: String!
+	"""
+		Unique stock keeping unit
+	"""
+	sku: String!
+	price: MonetaryAmount!
+	stockQuantity: NonNegativeInt!
+	product: Product!
+	image: Image
+	"""
+		Selected options for this variant (e.g., Color: Red, Size: M)
+	"""
+	selectedOptions: [SelectedOption!]!
+}
+
+type SelectedOption {
+	"""
+		Option name (e.g., "Color")"""
+  	name: String! 
+	"""
+		Selected value (e.g., "Red")"""
+  	value: String! # "red"
+}
+
+type Image {
+	id: ID!
+	url: String!
+}
+
+type Favorite {
+	id: ID!
+	product: Product!
+}
+
+type CartItem {
+	id: ID!
+	quantity: Int!
+	variant: Variant!
+	"""
+		Subtotal for this item (price × quantity)
+	"""
+	subtotal: MonetaryAmount!
+}
+
+type Cart {
+	id: ID!
+	items: [CartItem!]!
+	totalQuantity: Int!
+	"""
+		Sum of all item subtotals
+	"""
+	subtotal: MonetaryAmount!
+	"""
+		Final total (currently same as subtotal, representation only for tax/discount)
+	"""
+	grandTotal: MonetaryAmount!
+}
+
+type Order {
+	id: ID!
+	status: OrderStatus!
+	"""
+		Snapshot of total amount at time of order
+	"""
+	totalAmount: MonetaryAmount! 
+	"""
+		Snapshot of shipping address at time of order
+	"""
+	shippingAddress: Address! 
+	items: [OrderItem!]!
+	payments: [Payment!]!
+	createdAt: DateTime!
+}
+
+"""
+	Order item with snapshot data (product/variant details at time of purchase)
+"""
+type OrderItem {
+	id: ID!
+	""" 
+		Product title at time of purchase 
+	"""
+	productTitle: String! 
+	""" 
+		Variant title at time of purchase
+	 """
+	variantTitle: String! 
+	quantity: Int!
+	"""
+		Unit price at time of purchase
+	"""
+	price: MonetaryAmount! 
+	"""
+		Total for this line item (price * quantity)
+	"""
+	total: MonetaryAmount! 
+}
+
+type Payment {
+	id: ID!
+	amount: MonetaryAmount!
+	createdAt: DateTime!
+	status: PaymentStatus!
+	"""
+		Stripe receipt URL (if available)
+	"""
+	receipt_url: String
+}
+
+#-------------------------------------------------
+
+#ROOT QUERY
+type Query {
+	#PUBLIC
+
+	"""
+		Get a single product by ID
+		Returns null if product is inactive, deleted, or not found
+	"""
+	product(id: ID!): Product
+
+	"""
+		List products with cursor-based pagination
+		Only returns active, non-deleted products
+		Use manager.allProducts() for full catalog access including inactive/deleted products
+	"""
+	products(
+		first: Int = 15
+		after: String
+		categoryId: ID
+	): ProductConnection!
+	
+	categories: [Category!]!
+	category(id: ID!): Category
+
+	#CLIENT
+	"""
+		Get current authenticated user.
+		Returns null if not authenticated.
+	"""
+	me: User
+
+	"""
+		Get current user's cart.
+	"""
+	myCart: Cart
+
+	"""
+		Get current user's order history
+	"""
+	myOrders: [Order!]! 
+
+	#MANAGER
+	"""    Manager-only queries requiring MANAGER role"""
+	manager: ManagerQuery
+}
+
+"""
+    Manager-only queries for product and order management
+"""
+type ManagerQuery {
+	"""
+		List all products with admin metadata.
+		Can optionally include soft-deleted products.
+		Requires MANAGER role.
+	"""
+	allProducts(
+		first: Int = 15
+		after: String
+		includeDeleted: Boolean = false
+	): ProductAdminConnection!  
+
+	"""
+		List all orders across all customers.
+		Requires MANAGER role.
+	"""
+    allOrders(
+		first: Int = 20
+		after: String
+	): OrderConnection!
+}
+
+#PAGINATION
+type PageInfo {
+	"""
+		Whether more results exist after this page
+	"""
+	hasNextPage: Boolean!
+	"""
+		Cursor to fetch next page
+	"""
+	endCursor: String
+}
+
+#Products Pagination
+type ProductEdge {
+	"""
+		Base64-encoded cursor for this product
+	"""
+	cursor: String! 
+	node: Product!
+}
+
+type ProductConnection {
+	edges: [ProductEdge!]!
+	pageInfo: PageInfo!
+	"""
+		Total number of products in current result set
+	"""
+	totalCount: Int! 
+}
+
+type ProductAdminConnection {
+  edges: [ProductAdminEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type ProductAdminEdge {
+  cursor: String!
+  node: ProductAdmin!
+}
+
+type OrderEdge {
+  cursor: String!
+  node: Order!
+}
+
+type OrderConnection {
+  edges: [OrderEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+#-------------------------------------------------
+
+# ROOT MUTATIONS
+type Mutation {
+	#AUTH
+	signUp(input: SignUpInput!): AuthPayload!
+	signIn(input: SignInInput!): AuthPayload!
+	signOut(token: String!): Boolean! 
+	forgotPassword(email: String!): Boolean! 
+	resetPassword(input: ResetPasswordInput!): Boolean! 
+	refreshToken(token: String!): AuthPayload!
+
+	changePassword(input: ChangePasswordInput!): Boolean!
+
+	#ADDRESSES
+	addAddress(input: CreateAddressInput!): Address!
+	updateAddress(id: ID!, input: UpdateAddressInput!): Address!
+	deleteAddress(id: ID!): ID!
+	
+	#FAVORITES
+	"""
+		Add product to user's favorites.
+		Returns true if added, false if already favorited.
+	"""
+	addFavorite(productId: ID!): Boolean!
+	"""
+		Remove product from user's favorites.
+		Returns true if removed, false if wasn't favorited.
+	"""
+	removeFavorite(productId: ID!): Boolean!
+
+	#CATEGORIES 
+	"""
+		Manage categories. Requires MANAGER role
+	"""
+	createCategory(input: CreateCategoryInput!): Category!
+	updateCategory(id: ID!, input: UpdateCategoryInput): Category!
+	"""
+		Soft delete category. Returns ID of deleted category.
+		Requires MANAGER role.
+	"""
+	deleteCategory(id: ID!): ID!
+
+	#PRODUCTS
+	"""
+		Create new product with variants.
+		Requires MANAGER role.
+	"""
+	createProduct(input: CreateProductInput!): Product!
+	"""
+		Update product details.
+		Does not affect variants or images.
+		Requires MANAGER role.
+	"""
+	updateProduct(id: ID!, input: UpdateProductInput!): Product!
+	"""
+		Soft delete product. Returns ID of deleted product.
+		Requires MANAGER role.
+	"""
+	deleteProduct(id: ID!): ID!
+	"""
+		Disable product (sets isActive = false).
+		Requires MANAGER role.
+	"""
+	disableProduct(id: ID!): Product!
+	"""
+		Enable product (sets isActive = true).
+		Product will appear in public queries.
+		Requires MANAGER role.
+	"""
+	enableProduct(id: ID!): Product!
+
+	#VARIANTS (manager)
+	"""
+		Add new variant to existing product.
+		Requires MANAGER role.
+	"""
+	addProductVariant(productId: ID!, input: CreateVariantInput!): Product!
+	"""
+		Update existing product variant.
+		Requires MANAGER role.
+	"""
+	updateProductVariant(variantId: ID!, input: UpdateVariantInput!): Product!
+	"""
+		Delete product variant.
+		Returns updated product.
+		Requires MANAGER role.
+	"""
+	deleteProductVariant(variantId: ID!): Product!
+
+	#IMAGES (manager)
+	"""
+		Add image to product gallery.
+		Requires MANAGER role.
+	"""
+	addProductImage(productId: ID!, input: AddImageInput): Product!
+	"""
+		Delete image from product gallery.
+		Requires MANAGER role.
+	"""
+	deleteProductImage(imageId: ID!): Product!
+
+	#CART (client)
+	"""
+		Add item to cart.
+		If variant already exists in cart, increases quantity.
+	"""
+	addItemToCart(input: AddToCartInput!): Cart!
+	"""
+		Update cart item quantity.
+		Quantity must be >= 1. Use removeItemFromCart to delete items
+	"""
+	updateCartItemQuantity(itemId: ID!, quantity: Int!): Cart!
+	"""
+		Remove item from cart
+	"""
+	removeItemFromCart(itemId: ID!): Cart!
+	"""
+		Remove all items from cart
+	"""
+	clearCart: Cart!
+
+	#CHECKOUT (client)
+	"""
+		Create order from current cart
+		Clears cart on success
+	"""
+	checkout(input: CheckoutInput!): Order!
+	"""
+		Update order status.
+		Requires MANAGER role.
+	"""
+	updateOrderStatus(id: ID!, status: OrderStatus!): Order!
+
+	#PAYMENT
+	"""
+		Create Stripe payment intent for order
+		Returns client secret for stripe payment
+	"""
+	createPaymentIntent(orderId: ID!): PaymentIntentResult!
+}
+
+
+#INPUT TYPES
+#auth inputss
+input SignUpInput {
+	fullname: String!
+	email: String!
+	password: String!
+}
+
+input SignInInput {
+	email: String!
+	password: String!
+}
+
+input ResetPasswordInput {
+	"""
+		Token from password reset email
+	"""
+	token: String!
+	newPassword: String!
+}
+
+input ChangePasswordInput {
+	oldPassword: String!
+	newPassword: String!
+}
+
+#user
+input CreateAddressInput {
+	addressLine: String!
+	city: String!
+	country: String!
+	postalCode: String!
+}
+
+input UpdateAddressInput {
+	addressLine: String
+	city: String
+	country: String
+	postalCode: String
+}
+
+#categories
+input CreateCategoryInput {
+	name: String!
+}
+
+input UpdateCategoryInput {
+	name: String
+}
+
+#catalog
+input CreateProductInput {
+	title: String!
+	description: String!
+	categoryId: ID!
+	"""
+		Image URLs for product gallery
+	"""
+	images: [String!]
+	"""
+		Product options (e.g., [{name: "Color", values: ["Red", "Blue"]}])
+	"""
+	options: [ProductOptionInput!]!
+	"""
+		Product variants (at least one required)
+	"""
+	variants: [CreateVariantInput!]!
+}
+
+input UpdateProductInput {
+	title: String
+	description: String
+	categoryId: ID
+	images: [String!]
+}
+
+#variantes
+input ProductOptionInput {
+	"""
+		Option name (e.g., "Color", "Size")
+	"""
+	name: String!
+	"""
+		Available values (e.g., ["Red", "Blue", "Green"])
+	"""
+	values: [String!]!
+}
+
+input CreateVariantInput {
+	sku: String!
+	"""
+		Price in cents (e.g., 2000 = $20.00)
+	"""
+	price: PositiveInt!
+	stock: PositiveInt!
+	selectedOptions: [SelectedOptionInput!]!
+	imageUrl: String
+}
+
+input UpdateVariantInput {
+	sku: String
+	price: PositiveInt
+	stock: NonNegativeInt
+	imageUrl: String
+}
+
+input SelectedOptionInput {
+	"""
+		Option name (must match ProductOption.name)
+	"""
+  	name: String!
+ 	"""    
+  		Option value (must be in ProductOption.values)
+	"""
+ 	 value: String!
+}
+
+#images
+input AddImageInput {
+	url: String!
+}
+
+#cart
+input AddToCartInput {
+	variantId: ID!
+	"""
+		Quantity to add (default: 1)
+	"""
+	quantity: Int! = 1
+}
+
+input CheckoutInput {
+	"""
+		Shipping address for this order
+	"""
+	shippingAddressId: ID!
+}
+
+#RESPONSES
+type AuthPayload {
+	"""
+		JWT access token (expires in 15 minutes)
+	"""
+	accessToken: String!
+	"""
+		Refresh token sent as httpOnly cookie
+	"""
+
+	user: User!
+}
+
+type PaymentIntentResult {
+	"""
+		Stripe client secret for frontend confirmation
+	"""
+	clientSecret: String!
+	amount: MonetaryAmount!
+}
