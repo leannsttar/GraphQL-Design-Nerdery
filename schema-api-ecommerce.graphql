@@ -1,681 +1,610 @@
-#Custom Scalar Type
+# Custom Scalar Types
 """
-	ISO-8601 UTC DateTime (e.g. 2026-02-06T15:30:00Z)
+ISO-8601 UTC DateTime (e.g. 2026-02-06T15:30:00Z)
 """
 scalar DateTime
-scalar PositiveInt
-scalar NonNegativeInt
 
 enum Role {
-	CLIENT
-	MANAGER
+  CLIENT
+  MANAGER
 }
 
 enum OrderStatus {
-	PENDING
-	CANCELLED
-	PAID
-	SHIPPED
-	DELIVERED
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
 }
 
 enum PaymentStatus {
-	PENDING
-	SUCCESS
-	FAILED
+  PENDING
+  SUCCEEDED
+  FAILED
 }
 
-#OBJECT TYPES
-"""
-	Monetary amount with currency and formatted display
-"""
-type MonetaryAmount {
-  	"""
-  	Amount in cents (e.g., 2000 = $20.00)
-	"""
-  	amount: PositiveInt! 
-  	currency: String!
-  	"""
-		Human-readable formatted string (e.g., "$20.00")
-	"""
-  	formatted: String! 
+enum PaymentMethod {
+  PAYMENT_LINK
+  PAYMENT_INTENT
 }
 
+# ─────────────────────────────────────────────────
+# OBJECT TYPES
+# ─────────────────────────────────────────────────
 
-type Address{
-	id: ID!
-	addressLine: String!
-	city: String!
-	country: String!
-	postalCode: String!
+type Address {
+  id: ID!
+  addressLine: String!
+  city: String!
+  country: String!
+  postalCode: String!
 }
 
-type User{
-	id: ID!
-	email: String!
-	fullname: String
-	role: Role!
-	addresses: [Address!]
-	#cart: Cart
-	#orders: [Order!]
+type User {
+  id: ID!
+  email: String!
+  fullName: String
+  role: Role!
+  addresses: [Address!]
 }
 
-type Category{
-	id: ID!
-	name: String!
-	products: [Product!]
+type Category {
+  id: ID!
+  name: String!
+  products: [Product!]
 }
 
-"""
-	Base contract to define the mimimum structure of Product
-"""
-interface ProductBase{
-	id: ID!
-	title: String!
-	description: String!
-	category: Category!
-	featuredImage: Image
-	images: [Image!]!
-	options: [ProductOption!]!
-	variants: [Variant!]!
+type Product {
+  id: ID!
+  name: String!
+  description: String!
+  categories: [Category!]!
+  featuredImage: Image
+  images: [Image!]!
+  options: [ProductOption!]!
+  variants: [Variant!]!
+  """
+  Whether product is active and visible to customers
+  """
+  isActive: Boolean!
+  """
+  Soft delete timestamp (null if not deleted)
+  """
+  deletedAt: DateTime
+  createdAt: DateTime!
+  updatedAt: DateTime!
 }
 
 """
-	Public product view - only shows active, non-deleted products
-"""
-type Product implements ProductBase{
-	id: ID!
-	title: String!
-	description: String!
-	category: Category!
-	"""
-	Main product image
-	"""
-	featuredImage: Image
-	images: [Image!]!
-	"""
-	Available options (e.g., Color, Size)
-	"""
-	options: [ProductOption!]!
-	"""
-	All product variants
-	"""
-	variants: [Variant!]!
-}
-
-"""
-	Admin product view with metadata (isActive, timestamps, soft deletes)
-"""
-type ProductAdmin implements ProductBase{
-	id: ID!
-	title: String!
-	description: String!
-	category: Category!
-	featuredImage: Image
-	images: [Image!]!
-	options: [ProductOption!]!
-	variants: [Variant!]!
-	"""
-	Whether product is active and visible to customers
-	"""
-	isActive: Boolean!
-	"""
-	Soft delete timestamp (null if not deleted)
-	"""
-	deletedAt: DateTime
-	createdAt: DateTime!
-	updatedAt: DateTime!
-}
-
-"""
-	Product option (e.g., Color with values ["Red", "Blue"])
+Product option (e.g., Color with values ["Red", "Blue"])
 """
 type ProductOption {
   id: ID!
   """
-	Option name (e.g., "Color", "Size")
+  Option name (e.g., "Color", "Size")
   """
-  name: String!  
+  name: String!
   """
-  	Available values (e.g., S, XL, L)
+  Available values (e.g., ["S", "XL", "L"])
   """
   values: [String!]!
 }
 
 type Variant {
-	id: ID!
-	title: String!
-	"""
-		Unique stock keeping unit
-	"""
-	sku: String!
-	price: MonetaryAmount!
-	stockQuantity: NonNegativeInt!
-	product: Product!
-	image: Image
-	"""
-		Selected options for this variant (e.g., Color: Red, Size: M)
-	"""
-	selectedOptions: [SelectedOption!]!
+  id: ID!
+  """
+  Unique stock keeping unit
+  """
+  sku: String!
+  price: Int!
+  stockQuantity: Int!
+  product: Product!
+  image: Image
+  """
+  Selected options for this variant (e.g., Color: Red, Size: M)
+  """
+  selectedOptions: [SelectedOption!]!
+  """
+  Whether the authenticated user has liked this variant.
+  Always false for unauthenticated requests.
+  """
+  isFavorite: Boolean!
+  paymentLinkUrl: String
 }
 
 type SelectedOption {
-	"""
-		Option name (e.g., "Color")"""
-  	name: String! 
-	"""
-		Selected value (e.g., "Red")"""
-  	value: String! # "red"
+  """
+  Option name (e.g., "Color")
+  """
+  name: String!
+  """
+  Selected value (e.g., "Red")
+  """
+  value: String!
 }
 
 type Image {
-	id: ID!
-	url: String!
+  id: ID!
+  url: String!
+  isMain: Boolean!
 }
 
 type Favorite {
-	id: ID!
-	product: Product!
+  id: ID!
+  variant: Variant!
+  createdAt: DateTime!
 }
 
 type CartItem {
-	id: ID!
-	quantity: Int!
-	variant: Variant!
-	"""
-		Subtotal for this item (price × quantity)
-	"""
-	subtotal: MonetaryAmount!
+  id: ID!
+  quantity: Int!
+  variant: Variant!
+  """
+  Subtotal for this item (price × quantity)
+  """
+  subtotal: Int!
 }
 
 type Cart {
-	id: ID!
-	items: [CartItem!]!
-	totalQuantity: Int!
-	"""
-		Sum of all item subtotals
-	"""
-	subtotal: MonetaryAmount!
-	"""
-		Final total (currently same as subtotal, representation only for tax/discount)
-	"""
-	grandTotal: MonetaryAmount!
+  id: ID!
+  items: [CartItem!]!
+  totalQuantity: Int!
+  """
+  Sum of all item subtotals
+  """
+  subtotal: Int!
+  """
+  Final total (currently same as subtotal, placeholder for tax/discount)
+  """
+  grandTotal: Int!
 }
 
 type Order {
-	id: ID!
-	status: OrderStatus!
-	"""
-		Snapshot of total amount at time of order
-	"""
-	totalAmount: MonetaryAmount! 
-	"""
-		Snapshot of shipping address at time of order
-	"""
-	shippingAddress: Address! 
-	items: [OrderItem!]!
-	payments: [Payment!]!
-	createdAt: DateTime!
+  id: ID!
+  status: OrderStatus!
+  """
+  Sum of items before discount
+  """
+  subtotal: Int!
+  """
+  Discount amount applied (0 if none)
+  """
+  discountAmount: Int!
+  """
+  Final total after discount
+  """
+  totalAmount: Int!
+  """
+  Snapshot of shipping address at time of order
+  """
+  shippingAddress: Address!
+  items: [OrderItem!]!
+  payments: [Payment!]!
+  createdAt: DateTime!
 }
 
 """
-	Order item with snapshot data (product/variant details at time of purchase)
+Order item with snapshot data (product/variant details at time of purchase)
 """
 type OrderItem {
-	id: ID!
-	""" 
-		Product title at time of purchase 
-	"""
-	productTitle: String! 
-	""" 
-		Variant title at time of purchase
-	 """
-	variantTitle: String! 
-	quantity: Int!
-	"""
-		Unit price at time of purchase
-	"""
-	price: MonetaryAmount! 
-	"""
-		Total for this line item (price * quantity)
-	"""
-	total: MonetaryAmount! 
+  id: ID!
+  """
+  Product title at time of purchase
+  """
+  productTitle: String!
+  """
+  Variant title at time of purchase
+  """
+  variantTitle: String!
+  quantity: Int!
+  """
+  Unit price at time of purchase
+  """
+  price: Int!
+  """
+  Total for this line item (price × quantity)
+  """
+  total: Int!
 }
 
 type Payment {
-	id: ID!
-	amount: MonetaryAmount!
-	createdAt: DateTime!
-	status: PaymentStatus!
-	"""
-		Stripe receipt URL (if available)
-	"""
-	receipt_url: String
+  id: ID!
+  amount: Int!
+  paymentMethod: PaymentMethod!
+  status: PaymentStatus!
+  """
+  Stripe receipt URL (if available)
+  """
+  receiptUrl: String
+  createdAt: DateTime!
 }
 
-#-------------------------------------------------
+# ─────────────────────────────────────────────────
+# ROOT QUERY
+# ─────────────────────────────────────────────────
 
-#ROOT QUERY
 type Query {
-	#PUBLIC
+  # --- PUBLIC ---
+  product(id: ID!): Product
+  products(limit: Int = 15, offset: Int = 0, categoryId: ID): PaginatedProducts!
+  categories: [Category!]!
 
-	"""
-		Get a single product by ID
-		Returns null if product is inactive, deleted, or not found
-	"""
-	product(id: ID!): Product
+  # --- AUTHENTICATED USER ---
+  me: User
+  myCart: Cart
+  myFavorites: [Favorite!]!
 
-	"""
-		List products with cursor-based pagination
-		Only returns active, non-deleted products
-		Use manager.allProducts() for full catalog access including inactive/deleted products
-	"""
-	products(
-		first: Int = 15
-		after: String
-		categoryId: ID
-	): ProductConnection!
-	
-	categories: [Category!]!
-	category(id: ID!): Category
+  # --- UNIFIED QUERIES (Filtered by role) ---
 
-	#CLIENT
-	"""
-		Get current authenticated user.
-		Returns null if not authenticated.
-	"""
-	me: User
+  """
+  Get a specific order by ID.
+  Access is determined by user role.
+  """
+  order(id: ID!): Order
 
-	"""
-		Get current user's cart.
-	"""
-	myCart: Cart
-
-	"""
-		Get current user's order history
-	"""
-	myOrders: [Order!]! 
-
-	#MANAGER
-	"""    Manager-only queries requiring MANAGER role"""
-	manager: ManagerQuery
+  """
+  Get orders with optional filters.
+  - Clients see their own orders.
+  - Managers see all orders.
+  """
+  orders(
+    filter: OrderFilterInput
+    limit: Int = 20
+    offset: Int = 0
+  ): PaginatedOrders!
 }
 
-"""
-    Manager-only queries for product and order management
-"""
-type ManagerQuery {
-	"""
-		List all products with admin metadata.
-		Can optionally include soft-deleted products.
-		Requires MANAGER role.
-	"""
-	allProducts(
-		first: Int = 15
-		after: String
-		includeDeleted: Boolean = false
-	): ProductAdminConnection!  
+# ─────────────────────────────────────────────────
+# PAGINATION
+# ─────────────────────────────────────────────────
 
-	"""
-		List all orders across all customers.
-		Requires MANAGER role.
-	"""
-    allOrders(
-		first: Int = 20
-		after: String
-	): OrderConnection!
+type PaginatedProducts {
+  items: [Product!]!
+  page: Int!
+  limit: Int!
+  totalItems: Int!
+  totalPages: Int!
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
 }
 
-#PAGINATION
-type PageInfo {
-	"""
-		Whether more results exist after this page
-	"""
-	hasNextPage: Boolean!
-	"""
-		Cursor to fetch next page
-	"""
-	endCursor: String
+type PaginatedOrders {
+  items: [Order!]!
+  page: Int!
+  limit: Int!
+  totalItems: Int!
+  totalPages: Int!
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
 }
 
-#Products Pagination
-type ProductEdge {
-	"""
-		Base64-encoded cursor for this product
-	"""
-	cursor: String! 
-	node: Product!
-}
-
-type ProductConnection {
-	edges: [ProductEdge!]!
-	pageInfo: PageInfo!
-	"""
-		Total number of products in current result set
-	"""
-	totalCount: Int! 
-}
-
-type ProductAdminConnection {
-  edges: [ProductAdminEdge!]!
-  pageInfo: PageInfo!
-  totalCount: Int!
-}
-
-type ProductAdminEdge {
-  cursor: String!
-  node: ProductAdmin!
-}
-
-type OrderEdge {
-  cursor: String!
-  node: Order!
-}
-
-type OrderConnection {
-  edges: [OrderEdge!]!
-  pageInfo: PageInfo!
-  totalCount: Int!
-}
-
-#-------------------------------------------------
-
+# ─────────────────────────────────────────────────
 # ROOT MUTATIONS
+# ─────────────────────────────────────────────────
+
 type Mutation {
-	#AUTH
-	signUp(input: SignUpInput!): AuthPayload!
-	signIn(input: SignInInput!): AuthPayload!
-	signOut(token: String!): Boolean! 
-	forgotPassword(email: String!): Boolean! 
-	resetPassword(input: ResetPasswordInput!): Boolean! 
-	refreshToken(token: String!): AuthPayload!
+  # AUTH
+  signUp(input: SignUpInput!): AuthPayload!
+  signIn(input: SignInInput!): AuthPayload!
+  signOut(token: String!): Boolean!
+  forgotPassword(email: String!): Boolean!
+  resetPassword(input: ResetPasswordInput!): Boolean!
+  refreshToken(token: String!): AuthPayload!
+  changePassword(input: ChangePasswordInput!): Boolean!
 
-	changePassword(input: ChangePasswordInput!): Boolean!
+  # ADDRESSES
+  addAddress(input: CreateAddressInput!): Address!
+  updateAddress(id: ID!, input: UpdateAddressInput!): Address!
+  deleteAddress(id: ID!): Address!
 
-	#ADDRESSES
-	addAddress(input: CreateAddressInput!): Address!
-	updateAddress(id: ID!, input: UpdateAddressInput!): Address!
-	deleteAddress(id: ID!): ID!
-	
-	#FAVORITES
-	"""
-		Add product to user's favorites.
-		Returns true if added, false if already favorited.
-	"""
-	addFavorite(productId: ID!): Boolean!
-	"""
-		Remove product from user's favorites.
-		Returns true if removed, false if wasn't favorited.
-	"""
-	removeFavorite(productId: ID!): Boolean!
+  # FAVORITES
+  toggleFavorite(variantId: ID!): Boolean!
 
-	#CATEGORIES 
-	"""
-		Manage categories. Requires MANAGER role
-	"""
-	createCategory(input: CreateCategoryInput!): Category!
-	updateCategory(id: ID!, input: UpdateCategoryInput): Category!
-	"""
-		Soft delete category. Returns ID of deleted category.
-		Requires MANAGER role.
-	"""
-	deleteCategory(id: ID!): ID!
+  # CATEGORIES (manager)
+  """
+  Create category. Requires MANAGER role.
+  """
+  createCategory(input: CreateCategoryInput!): Category!
+  updateCategory(id: ID!, input: UpdateCategoryInput): Category!
+  """
+  Soft delete category. Returns deleted category.
+  Requires MANAGER role.
+  """
+  deleteCategory(id: ID!): Category!
 
-	#PRODUCTS
-	"""
-		Create new product with variants.
-		Requires MANAGER role.
-	"""
-	createProduct(input: CreateProductInput!): Product!
-	"""
-		Update product details.
-		Does not affect variants or images.
-		Requires MANAGER role.
-	"""
-	updateProduct(id: ID!, input: UpdateProductInput!): Product!
-	"""
-		Soft delete product. Returns ID of deleted product.
-		Requires MANAGER role.
-	"""
-	deleteProduct(id: ID!): ID!
-	"""
-		Disable product (sets isActive = false).
-		Requires MANAGER role.
-	"""
-	disableProduct(id: ID!): Product!
-	"""
-		Enable product (sets isActive = true).
-		Product will appear in public queries.
-		Requires MANAGER role.
-	"""
-	enableProduct(id: ID!): Product!
+  # PRODUCTS (manager)
+  """
+  Create new product with variants.
+  Requires MANAGER role.
+  """
+  createProduct(input: CreateProductInput!): Product!
+  """
+  Update product details.
+  Does not affect variants or images.
+  Requires MANAGER role.
+  """
+  updateProduct(id: ID!, input: UpdateProductInput!): Product!
+  """
+  Soft delete product. Returns deleted product.
+  Requires MANAGER role.
+  """
+  deleteProduct(id: ID!): Product!
+  """
+  Disable product (sets isActive = false).
+  Requires MANAGER role.
+  """
+  disableProduct(id: ID!): Product!
+  """
+  Enable product (sets isActive = true).
+  Requires MANAGER role.
+  """
+  enableProduct(id: ID!): Product!
 
-	#VARIANTS (manager)
-	"""
-		Add new variant to existing product.
-		Requires MANAGER role.
-	"""
-	addProductVariant(productId: ID!, input: CreateVariantInput!): Product!
-	"""
-		Update existing product variant.
-		Requires MANAGER role.
-	"""
-	updateProductVariant(variantId: ID!, input: UpdateVariantInput!): Product!
-	"""
-		Delete product variant.
-		Returns updated product.
-		Requires MANAGER role.
-	"""
-	deleteProductVariant(variantId: ID!): Product!
+  # VARIANTS (manager)
+  """
+  Add new variant to existing product.
+  Requires MANAGER role.
+  """
+  addVariant(productId: ID!, input: CreateVariantInput!): Product!
+  """
+  Update existing product variant.
+  Requires MANAGER role.
+  """
+  updateVariant(id: ID!, input: UpdateVariantInput!): Product!
+  """
+  Delete product variant. Returns updated product.
+  Requires MANAGER role.
+  """
+  deleteVariant(id: ID!): Product!
 
-	#IMAGES (manager)
-	"""
-		Add image to product gallery.
-		Requires MANAGER role.
-	"""
-	addProductImage(productId: ID!, input: AddImageInput): Product!
-	"""
-		Delete image from product gallery.
-		Requires MANAGER role.
-	"""
-	deleteProductImage(imageId: ID!): Product!
+  # IMAGES (manager)
+  """
+  Add image to product gallery.
+  Requires MANAGER role.
+  """
+  addProductImage(id: ID!, input: AddImageInput): Product!
+  """
+  Delete image from product gallery.
+  Requires MANAGER role.
+  """
+  deleteProductImage(id: ID!): Product!
 
-	#CART (client)
-	"""
-		Add item to cart.
-		If variant already exists in cart, increases quantity.
-	"""
-	addItemToCart(input: AddToCartInput!): Cart!
-	"""
-		Update cart item quantity.
-		Quantity must be >= 1. Use removeItemFromCart to delete items
-	"""
-	updateCartItemQuantity(itemId: ID!, quantity: Int!): Cart!
-	"""
-		Remove item from cart
-	"""
-	removeItemFromCart(itemId: ID!): Cart!
-	"""
-		Remove all items from cart
-	"""
-	clearCart: Cart!
+  # CART (client)
+  """
+  Add item to cart.
+  If variant already exists in cart, increases quantity.
+  Creates cart on first use.
+  """
+  addItemToCart(input: AddToCartInput!): Cart!
+  """
+  Update cart item quantity.
+  Quantity must be >= 1. Use removeItemFromCart to delete items.
+  """
+  updateCartItemQuantity(id: ID!, quantity: Int!): Cart!
+  """
+  Remove item from cart.
+  """
+  removeItemFromCart(id: ID!): Cart!
+  """
+  Remove all items from cart.
+  """
+  clearCart: Cart!
 
-	#CHECKOUT (client)
-	"""
-		Create order from current cart
-		Clears cart on success
-	"""
-	checkout(input: CheckoutInput!): Order!
-	"""
-		Update order status.
-		Requires MANAGER role.
-	"""
-	updateOrderStatus(id: ID!, status: OrderStatus!): Order!
+  # CHECKOUT (client)
+  """
+  Create order from current cart.
+  Clears cart items on success.
+  """
+  checkout(input: CheckoutInput!): Order!
 
-	#PAYMENT
-	"""
-		Create Stripe payment intent for order
-		Returns client secret for stripe payment
-	"""
-	createPaymentIntent(orderId: ID!): PaymentIntentResult!
+  # ORDER STATUS
+  """
+  Update order status.
+  Manager: paid → processing → shipped.
+  Enforced by role.
+  """
+  updateOrderStatus(id: ID!, status: OrderStatus!): Order!
+
+  """
+  Cancel an order.
+  Only allowed before shipped status.
+  Client can cancel own orders.
+  """
+  cancelOrder(id: ID!): Order!
+
+  # PAYMENT
+  """
+  Create Stripe payment intent for order.
+  Returns client secret for Stripe frontend confirmation.
+  """
+  createPaymentIntent(orderId: ID!): PaymentIntentResult!
 }
 
+# ─────────────────────────────────────────────────
+# INPUT TYPES
+# ─────────────────────────────────────────────────
 
-#INPUT TYPES
-#auth inputss
+# Auth
 input SignUpInput {
-	fullname: String!
-	email: String!
-	password: String!
+  fullName: String!
+  email: String!
+  password: String!
 }
 
 input SignInInput {
-	email: String!
-	password: String!
+  email: String!
+  password: String!
 }
 
 input ResetPasswordInput {
-	"""
-		Token from password reset email
-	"""
-	token: String!
-	newPassword: String!
+  """
+  Token from password reset email
+  """
+  token: String!
+  newPassword: String!
 }
 
 input ChangePasswordInput {
-	oldPassword: String!
-	newPassword: String!
+  oldPassword: String!
+  newPassword: String!
 }
 
-#user
+# User / Addresses
 input CreateAddressInput {
-	addressLine: String!
-	city: String!
-	country: String!
-	postalCode: String!
+  addressLine: String!
+  city: String!
+  country: String!
+  postalCode: String!
 }
 
 input UpdateAddressInput {
-	addressLine: String
-	city: String
-	country: String
-	postalCode: String
+  addressLine: String
+  city: String
+  country: String
+  postalCode: String
 }
 
-#categories
+# Categories
 input CreateCategoryInput {
-	name: String!
+  name: String!
 }
 
 input UpdateCategoryInput {
-	name: String
+  name: String
 }
 
-#catalog
+# Products
 input CreateProductInput {
-	title: String!
-	description: String!
-	categoryId: ID!
-	"""
-		Image URLs for product gallery
-	"""
-	images: [String!]
-	"""
-		Product options (e.g., [{name: "Color", values: ["Red", "Blue"]}])
-	"""
-	options: [ProductOptionInput!]!
-	"""
-		Product variants (at least one required)
-	"""
-	variants: [CreateVariantInput!]!
+  title: String!
+  description: String!
+  categoryId: ID!
+  """
+  Image URLs for product gallery
+  """
+  images: [String!]
+  """
+  Product options (e.g., [{name: "Color", values: ["Red", "Blue"]}])
+  """
+  options: [ProductOptionInput!]!
+  """
+  Product variants (at least one required)
+  """
+  variants: [CreateVariantInput!]!
 }
 
 input UpdateProductInput {
-	title: String
-	description: String
-	categoryId: ID
-	images: [String!]
+  title: String
+  description: String
+  categoryId: ID
 }
 
-#variantes
+# Variants
 input ProductOptionInput {
-	"""
-		Option name (e.g., "Color", "Size")
-	"""
-	name: String!
-	"""
-		Available values (e.g., ["Red", "Blue", "Green"])
-	"""
-	values: [String!]!
+  """
+  Option name (e.g., "Color", "Size")
+  """
+  name: String!
+  """
+  Available values (e.g., ["Red", "Blue", "Green"])
+  """
+  values: [String!]!
 }
 
 input CreateVariantInput {
-	sku: String!
-	"""
-		Price in cents (e.g., 2000 = $20.00)
-	"""
-	price: PositiveInt!
-	stock: PositiveInt!
-	selectedOptions: [SelectedOptionInput!]!
-	imageUrl: String
+  sku: String!
+  """
+  Price in cents (e.g., 2000 = $20.00)
+  """
+  price: Int!
+  stock: Int!
+  selectedOptions: [SelectedOptionInput!]!
+  imageUrl: String
 }
 
 input UpdateVariantInput {
-	sku: String
-	price: PositiveInt
-	stock: NonNegativeInt
-	imageUrl: String
+  sku: String
+  price: Int
+  stock: Int
+  imageUrl: String
 }
 
 input SelectedOptionInput {
-	"""
-		Option name (must match ProductOption.name)
-	"""
-  	name: String!
- 	"""    
-  		Option value (must be in ProductOption.values)
-	"""
- 	 value: String!
+  """
+  Option name (must match ProductOption.name)
+  """
+  name: String!
+  """
+  Option value (must be in ProductOption.values)
+  """
+  value: String!
 }
 
-#images
+# Images
 input AddImageInput {
-	url: String!
+  url: String!
 }
 
-#cart
+# Cart
 input AddToCartInput {
-	variantId: ID!
-	"""
-		Quantity to add (default: 1)
-	"""
-	quantity: Int! = 1
+  variantId: ID!
+  """
+  Quantity to add (default: 1)
+  """
+  quantity: Int! = 1
 }
 
+# Checkout
 input CheckoutInput {
-	"""
-		Shipping address for this order
-	"""
-	shippingAddressId: ID!
+  """
+  Shipping address for this order
+  """
+  shippingAddressId: ID!
 }
 
-#RESPONSES
-type AuthPayload {
-	"""
-		JWT access token (expires in 15 minutes)
-	"""
-	accessToken: String!
-	"""
-		Refresh token sent as httpOnly cookie
-	"""
+input OrderFilterInput {
+  """
+  Filter by current order status.
+  """
+  status: OrderStatus
 
-	user: User!
+  """
+  Date range: start date (ISO 8601, e.g. "2026-02-01T00:00:00Z")
+  """
+  startDate: String
+
+  """
+  Date range: end date (ISO 8601)
+  """
+  endDate: String
+
+  """
+  Price range: minimum total paid
+  """
+  minPrice: Float
+
+  """
+  Price range: maximum total paid
+  """
+  maxPrice: Float
+}
+
+# ─────────────────────────────────────────────────
+# RESPONSE TYPES
+# ─────────────────────────────────────────────────
+
+type AuthPayload {
+  """
+  JWT access token (expires in 15 minutes)
+  """
+  accessToken: String!
+  user: User!
 }
 
 type PaymentIntentResult {
-	"""
-		Stripe client secret for frontend confirmation
-	"""
-	clientSecret: String!
-	amount: MonetaryAmount!
+  """
+  Stripe client secret for frontend confirmation
+  """
+  clientSecret: String!
+  amount: Int!
 }
